@@ -104,7 +104,7 @@ If you use Claude Code, Cursor, or a similar tool, an assistant can walk you thr
 - BullMQ on Redis for the send queue and the worker
 - Auth.js (NextAuth) with email magic links through Resend
 - Tailwind CSS for the interface
-- The official Instagram API with Instagram Login
+- The official Instagram API, with Instagram Login or Meta's Unified login
 
 The complete stack, including application libraries, the two runtime processes, and the free services this runs on (Vercel, Neon, Redis Cloud, an Oracle Cloud always-free VM for the worker, Resend, Meta), is in [docs/stack.md](docs/stack.md).
 
