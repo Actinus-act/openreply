@@ -1,4 +1,5 @@
 import * as meta from "@/lib/meta/client";
+import { zernioInstagramId } from "@/lib/zernio/account-id";
 import { zernioRequest } from "@/lib/zernio/client";
 import type { InstagramContext } from "./context";
 
@@ -135,6 +136,7 @@ export async function getUserInfo({
       displayName?: string;
       profilePicture?: string;
       followersCount?: number | null;
+      metadata?: { instagramScopedId?: string } | null;
     }[];
   }>({ apiKey: context.apiKey, path: "/accounts?platform=instagram" });
   const account = result.accounts.find((a) => a._id === context.accountId);
@@ -142,7 +144,7 @@ export async function getUserInfo({
     throw new Error("Connected Instagram account is unavailable in Zernio");
   return {
     id: account.platformUserId,
-    user_id: account.platformUserId,
+    user_id: zernioInstagramId(account),
     username: account.username,
     name: account.displayName,
     profile_picture_url: account.profilePicture,
