@@ -27,6 +27,7 @@ import {
   getUserFollowStatus,
   resolveRecipientName,
   sendCommentReply,
+  sendDirectImage,
   sendDirectMessage,
   sendDirectMessageWithButton,
   sendDirectMessageWithLinkButton,
@@ -213,6 +214,7 @@ function buildInlineLinkFallback(
 type RevealAutomation = {
   dmMessage: string;
   linkButtonLabel: string | null;
+  dmImageUrl: string | null;
   trackedLinks: WorkerTrackedLink[];
   instagramAccount: { instagramId: string };
 };
@@ -221,8 +223,34 @@ type RevealAutomation = {
  * Deliver a campaign's reveal message as a direct message. Shared by the
  * button-tap (postback) path and the DM keyword-trigger path — both already
  * have an open conversation with the user, so neither uses a private reply.
+ *
+ * The campaign image, if any, follows as its own attachment message. Its
+ * failure is logged but not thrown: the text already went out, and a retry
+ * of the job would send that text a second time.
  */
-async function sendRevealDirectMessage({
+async function sendRevealDirectMessage(
+  params: Parameters<typeof sendRevealText>[0]
+): Promise<void> {
+  await sendRevealText(params);
+
+  const imageUrl = params.automation.dmImageUrl;
+  if (!imageUrl) return;
+  try {
+    await sendDirectImage({
+      context: params.accessToken,
+      instagramAccountId: params.automation.instagramAccount.instagramId,
+      userId: params.userId,
+      imageUrl,
+    });
+  } catch (imageError) {
+    console.error(
+      `[DM Worker] Image attachment failed in ${params.context}:`,
+      formatError(imageError)
+    );
+  }
+}
+
+async function sendRevealText({
   accessToken,
   automation,
   userId,
@@ -407,7 +435,10 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       // have to be considered or the comment is dropped without a trace.
       OR: [
         { postId: mediaId },
-        ...(originalMediaId ? [{ postId: originalMediaId }] : []),
+        { postIds: { has: mediaId } },
+        ...(originalMediaId
+          ? [{ postId: originalMediaId }, { postIds: { has: originalMediaId } }]
+          : []),
         { matchAnyPost: true },
       ],
       isActive: true,

@@ -94,6 +94,8 @@ export async function POST(request: NextRequest) {
         goal: (campaign.goal ?? "").trim().slice(0, 120) || null,
         postId: campaign.postId,
         postUrl: campaign.postUrl ?? null,
+        postIds: [campaign.postId],
+        postUrls: campaign.postUrl ? [campaign.postUrl] : [],
         keywords: campaign.keywords,
         dmMessage: campaign.dmMessage.slice(0, 1000),
         publicReplyEnabled: Boolean(publicReply),

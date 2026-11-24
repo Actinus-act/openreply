@@ -448,6 +448,31 @@ export async function sendDirectMessage(
   return handleResponse(response);
 }
 
+/** Send an image attachment as its own direct message. */
+export async function sendDirectImage(
+  accessToken: string,
+  instagramAccountId: string,
+  userId: string,
+  imageUrl: string
+): Promise<{ recipient_id: string; message_id: string }> {
+  const response = await fetch(
+    `${instagramGraphBase()}/${instagramAccountId}/messages`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        recipient: { id: userId },
+        message: { attachment: { type: "image", payload: { url: imageUrl } } },
+      }),
+    }
+  );
+
+  return handleResponse(response);
+}
+
 /**
  * Send a direct message as a button template with up to 3 web_url buttons —
  * the reveal message plus tappable link buttons (cleaner than inline URLs).

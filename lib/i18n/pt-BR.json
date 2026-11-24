@@ -468,5 +468,10 @@
   "{name} Campaign Report": "Relatório da campanha {name}",
   "{type} post": "Publicação {type}",
   "”": "”",
-  "← Campaigns": "← Campanhas"
+  "← Campaigns": "← Campanhas",
+  "Image upload failed.": "Falha ao enviar a imagem.",
+  "Remove image": "Remover imagem",
+  "Uploading…": "Enviando…",
+  "+ Attach An Image": "+ Anexar uma imagem",
+  "Sent as a photo right after this message, when it goes out as a DM (keyword DM or button tap). Instagram does not allow images in the first reply to a comment. JPG or PNG, up to 8 MB.": "Enviada como foto logo após esta mensagem, quando ela sai como DM (DM com palavra-chave ou toque no botão). O Instagram não permite imagens na primeira resposta a um comentário. JPG ou PNG, até 8 MB."
 }

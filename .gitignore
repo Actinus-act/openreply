@@ -43,3 +43,9 @@ next-env.d.ts
 
 /app/generated/prisma
 .gstack/
+*.patch
+Caddyfile
+backup.sh
+cron-6h.sh
+docker-compose.prod.yml
+nginx-openreply.conf

@@ -31,6 +31,8 @@ const createAutomationSchema = z
     instagramAccountId: z.string().min(1).optional().nullable(),
     postId: z.string().min(1).optional().nullable(),
     postUrl: z.string().url().optional().nullable(),
+    postIds: z.array(z.string().min(1)).optional().default([]),
+    postUrls: z.array(z.string().url()).optional().default([]),
     pendingNextReel: z.boolean().optional().default(false),
     matchAnyPost: z.boolean().optional().default(false),
     keywords: z.array(z.string().min(1).max(50)).max(10).optional().default([]),
@@ -41,6 +43,8 @@ const createAutomationSchema = z
     openingDmMessage: z.string().max(1000).optional().nullable(),
     openingDmButtonLabel: z.string().max(64).optional().nullable(),
     linkButtonLabel: z.string().max(20).optional().nullable(),
+    // Uploaded campaign image (an /api/media URL); "" or null means none.
+    dmImageUrl: z.union([z.string().url(), z.literal("")]).optional().nullable(),
     requireFollow: z.boolean().optional().default(false),
     followPromptMessage: z.string().max(1000).optional().nullable(),
     followPromptButtonLabel: z.string().max(20).optional().nullable(),
@@ -72,7 +76,7 @@ const createAutomationSchema = z
   })
   // A campaign must target a specific post, any post, or the next reel.
   .refine(
-    (d) => d.matchAnyPost || d.pendingNextReel || Boolean(d.postId),
+    (d) => d.matchAnyPost || d.pendingNextReel || Boolean(d.postId) || (d.postIds && d.postIds.length > 0),
     { message: "Choose which post(s) trigger the campaign", path: ["postId"] }
   )
   // And it must match either specific words or any word.
@@ -95,6 +99,8 @@ const updateAutomationSchema = z.object({
   instagramAccountId: z.string().min(1).optional(),
   postId: z.string().min(1).optional().nullable(),
   postUrl: z.string().url().optional().nullable(),
+  postIds: z.array(z.string().min(1)).optional(),
+  postUrls: z.array(z.string().url()).optional(),
   pendingNextReel: z.boolean().optional(),
   matchAnyPost: z.boolean().optional(),
   keywords: z.array(z.string().min(1).max(50)).max(10).optional(),
@@ -105,6 +111,8 @@ const updateAutomationSchema = z.object({
   openingDmMessage: z.string().max(1000).optional().nullable(),
   openingDmButtonLabel: z.string().max(64).optional().nullable(),
   linkButtonLabel: z.string().max(20).optional().nullable(),
+  // "" clears the image; undefined leaves it unchanged.
+  dmImageUrl: z.union([z.string().url(), z.literal("")]).optional().nullable(),
   requireFollow: z.boolean().optional(),
   followPromptMessage: z.string().max(1000).optional().nullable(),
   followPromptButtonLabel: z.string().max(20).optional().nullable(),
@@ -372,13 +380,27 @@ export async function POST(request: NextRequest) {
     .map((m) => m.trim())
     .filter(Boolean);
 
+  const rawPostIds = parsed.data.postIds && parsed.data.postIds.length > 0
+    ? parsed.data.postIds
+    : (parsed.data.postId ? [parsed.data.postId] : []);
+  const rawPostUrls = parsed.data.postUrls && parsed.data.postUrls.length > 0
+    ? parsed.data.postUrls
+    : (parsed.data.postUrl ? [parsed.data.postUrl] : []);
+
+  const effectivePostId = isSpecificPost ? (rawPostIds[0] ?? parsed.data.postId ?? null) : null;
+  const effectivePostUrl = isSpecificPost ? (rawPostUrls[0] ?? parsed.data.postUrl ?? null) : null;
+  const effectivePostIds = isSpecificPost ? rawPostIds : [];
+  const effectivePostUrls = isSpecificPost ? rawPostUrls : [];
+
   const automation = await prisma.automation.create({
     data: {
       name: parsed.data.name,
       goal: parsed.data.goal,
       // A next-reel campaign has no post yet; the cron binds it once a reel is posted.
-      postId: isSpecificPost ? parsed.data.postId : null,
-      postUrl: isSpecificPost ? parsed.data.postUrl : null,
+      postId: effectivePostId,
+      postUrl: effectivePostUrl,
+      postIds: effectivePostIds,
+      postUrls: effectivePostUrls,
       pendingNextReel,
       matchAnyPost,
       keywords: matchAnyWord ? [] : parsed.data.keywords,
@@ -393,6 +415,7 @@ export async function POST(request: NextRequest) {
         ? parsed.data.openingDmButtonLabel || null
         : null,
       linkButtonLabel: parsed.data.linkButtonLabel || null,
+      dmImageUrl: parsed.data.dmImageUrl || null,
       requireFollow: parsed.data.requireFollow,
       followPromptMessage: parsed.data.requireFollow
         ? parsed.data.followPromptMessage || null
@@ -512,6 +535,7 @@ export async function PATCH(request: NextRequest) {
   // Keep dependent fields consistent: any-word clears keywords; a disabled
   // opening DM clears its message and button.
   if (automationData.matchAnyWord === true) automationData.keywords = [];
+  if (automationData.dmImageUrl === "") automationData.dmImageUrl = null;
   if (automationData.openingDmEnabled === false) {
     automationData.openingDmMessage = null;
     automationData.openingDmButtonLabel = null;
@@ -528,6 +552,26 @@ export async function PATCH(request: NextRequest) {
   if (automationData.matchAnyPost === true || automationData.pendingNextReel === true) {
     automationData.postId = null;
     automationData.postUrl = null;
+    automationData.postIds = [];
+    automationData.postUrls = [];
+  } else {
+    if (parsed.data.postIds !== undefined || parsed.data.postId !== undefined) {
+      const pIds = parsed.data.postIds !== undefined
+        ? parsed.data.postIds
+        : (parsed.data.postId ? [parsed.data.postId] : []);
+      const pUrls = parsed.data.postUrls !== undefined
+        ? parsed.data.postUrls
+        : (parsed.data.postUrl ? [parsed.data.postUrl] : []);
+      automationData.postIds = pIds;
+      automationData.postUrls = pUrls;
+      if (pIds.length > 0) {
+        automationData.postId = pIds[0];
+        automationData.postUrl = pUrls[0] ?? null;
+      } else if (parsed.data.postId !== undefined) {
+        automationData.postId = parsed.data.postId;
+        automationData.postUrl = parsed.data.postUrl ?? null;
+      }
+    }
   }
   // Keep the public-reply variations list and the legacy single field in sync.
   if (automationData.publicReplyMessages !== undefined) {

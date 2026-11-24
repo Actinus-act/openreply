@@ -18,22 +18,26 @@ async function sendZernioMessage({
   postId,
   text,
   buttons,
+  imageUrl,
 }: {
   context: ZernioContext;
   recipientId?: string;
   commentId?: string;
   postId?: string;
-  text: string;
+  text?: string;
   buttons?: Button[];
+  imageUrl?: string;
 }) {
   const path = commentId
     ? `/inbox/comments/${encodeURIComponent(postId ?? commentId)}/${encodeURIComponent(commentId)}/private-reply`
     : `/inbox/conversations/${encodeURIComponent(recipientId!)}/messages`;
-  const body = {
-    accountId: context.accountId,
-    message: buttons ? text.slice(0, 640) : text,
-    ...(buttons ? { buttons } : {}),
-  };
+  const body = imageUrl
+    ? { accountId: context.accountId, attachmentUrl: imageUrl, attachmentType: "image" }
+    : {
+        accountId: context.accountId,
+        message: buttons ? (text ?? "").slice(0, 640) : text,
+        ...(buttons ? { buttons } : {}),
+      };
   const idempotencyKey = createHash("sha256")
     .update(
       JSON.stringify({
@@ -214,6 +218,28 @@ export async function sendDirectMessage({
       message
     );
   return sendZernioMessage({ context, recipientId: userId, text: message });
+}
+
+/** Send an image as a real attachment in the conversation (not a link). */
+export async function sendDirectImage({
+  context,
+  instagramAccountId,
+  userId,
+  imageUrl,
+}: {
+  context: InstagramContext;
+  instagramAccountId: string;
+  userId: string;
+  imageUrl: string;
+}) {
+  if (context.provider === "META")
+    return meta.sendDirectImage(
+      context.accessToken,
+      instagramAccountId,
+      userId,
+      imageUrl
+    );
+  return sendZernioMessage({ context, recipientId: userId, imageUrl });
 }
 
 export async function sendDirectMessageWithLinkButton({

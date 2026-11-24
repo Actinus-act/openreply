@@ -26,6 +26,12 @@ describe('Zernio event boundary', () => {
     expect(parseCommentEvents(comment!)).toEqual([]);
     expect(normalizeZernioEvent({ payload: { ...envelope, event: 'message.received', message: { platformMessageId: 'm', direction: 'outgoing', text: 'LINK', sender: { id: 'person1' } } }, account })).toBeNull();
   });
+  it('drops the account own comments when Zernio reports a different author id', () => {
+    const own = { ...envelope, event: 'comment.received', comment: { id: 'c', platformPostId: 'p', text: 'reply', author: { id: '17841400000000000', username: 'RocoTalk' } } };
+    expect(normalizeZernioEvent({ payload: own, account: { ...account, username: 'rocotalk' } })).toBeNull();
+    const other = { ...own, comment: { ...own.comment, author: { id: '17841400000000001', username: 'someone' } } };
+    expect(parseCommentEvents(normalizeZernioEvent({ payload: other, account: { ...account, username: 'rocotalk' } })!)).toHaveLength(1);
+  });
   it('maps postbacks without also triggering a keyword DM', () => {
     const result = normalizeZernioEvent({ account, payload: { ...envelope, event: 'message.received', message: { platformMessageId: 'native-mid', direction: 'incoming', text: 'LINK', sender: { id: 'person1' } }, metadata: { postbackPayload: 'reveal:campaign1', postbackTitle: 'Open' } } });
     expect(parsePostbackEvents(result!)).toEqual([{ instagramAccountId: 'ig1', userId: 'person1', payload: 'reveal:campaign1', mid: 'native-mid' }]);

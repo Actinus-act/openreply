@@ -19,6 +19,8 @@ interface Campaign {
   name: string;
   postId: string | null;
   postUrl: string | null;
+  postIds?: string[];
+  postUrls?: string[];
   pendingNextReel: boolean;
   matchAnyPost: boolean;
   keywords: string[];
@@ -94,7 +96,8 @@ export default function CampaignDetailPage() {
       )
       .catch(() => setAvatarUrl(null));
 
-    if (campaign.postId) {
+    const targetPostId = campaign.postId ?? campaign.postIds?.[0];
+    if (targetPostId) {
       fetch(`/api/instagram/posts?instagramAccountId=${acct}&limit=50`)
         .then((r) => r.json())
         .then((payload) => {
@@ -105,7 +108,7 @@ export default function CampaignDetailPage() {
               thumbnail_url?: string;
               media_url?: string;
             }[]
-          ).find((p) => p.id === campaign.postId);
+          ).find((p) => p.id === targetPostId);
           setPostThumb(hit?.thumbnail_url ?? hit?.media_url ?? null);
         })
         .catch(() => setPostThumb(null));
@@ -153,11 +156,14 @@ export default function CampaignDetailPage() {
   const hasLink = Boolean(campaign.trackedLinks?.[0]?.destinationUrl);
   const hasSecondLink = Boolean(campaign.trackedLinks?.[1]?.destinationUrl);
 
+  const postCount = campaign.postIds && campaign.postIds.length > 0 ? campaign.postIds.length : (campaign.postId ? 1 : 0);
   const trigger = campaign.matchAnyPost
     ? t("Any post or reel")
     : campaign.pendingNextReel
       ? t("Your next reel")
-      : t("A specific post or reel");
+      : postCount > 1
+        ? `${postCount} ${t("Selected")}`
+        : t("A specific post or reel");
   const matchText = campaign.matchAnyWord
     ? t("Any comment")
     : campaign.keywords.join(", ") || t("No keywords");

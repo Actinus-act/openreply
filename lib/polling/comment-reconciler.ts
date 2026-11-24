@@ -74,6 +74,7 @@ export async function reconcileComments(): Promise<void> {
       id: true,
       name: true,
       postId: true,
+      postIds: true,
       matchAnyPost: true,
       matchAnyWord: true,
       keywords: true,
@@ -126,6 +127,7 @@ async function sweepCampaign({
     id: string;
     name: string;
     postId: string | null;
+    postIds?: string[];
     matchAnyPost: boolean;
     matchAnyWord: boolean;
     keywords: string[];
@@ -172,12 +174,20 @@ async function sweepCampaign({
     return stat;
   }
 
-  // Which media this campaign covers: its own post, or the recent feed if it
+  // Which media this campaign covers: its own post(s), or the recent feed if it
   // matches any post.
+  const targetPostIds = new Set<string>();
+  if (automation.postId) targetPostIds.add(automation.postId);
+  if (automation.postIds?.length) {
+    for (const pid of automation.postIds) targetPostIds.add(pid);
+  }
+
   const mediaIds: string[] = [];
-  if (automation.postId) {
-    mediaIds.push(automation.postId);
-    mediaIds.push(...(await adMediaFor(automation.postId)));
+  if (targetPostIds.size > 0) {
+    for (const pid of targetPostIds) {
+      mediaIds.push(pid);
+      mediaIds.push(...(await adMediaFor(pid)));
+    }
   } else if (automation.matchAnyPost) {
     try {
       const media = await getUserMedia({
@@ -284,8 +294,8 @@ async function sweepCampaign({
         // drops the comment, so the sweep would enqueue it again every five
         // minutes and never deliver it.
         originalMediaId:
-          automation.postId && mediaId !== automation.postId
-            ? automation.postId
+          targetPostIds.size > 0 && !targetPostIds.has(mediaId)
+            ? (automation.postId ?? automation.postIds?.[0])
             : undefined,
         source: "POLLING",
       });

@@ -29,14 +29,24 @@ export function verifyZernioSignature({ rawBody, signature, secret }: {
   return timingSafeEqual(Buffer.from(signature, 'hex'), expected);
 }
 
+// Zernio reports a comment's author by Instagram user id, a different id space
+// from the account's stored instagramId, so the id check in parseCommentEvents
+// never sees the account's own comments. Compare usernames, or every public
+// reply the campaign posts comes back as a new comment and loops.
+function isOwnComment(author: { username?: string }, account: { username?: string | null }) {
+  const own = account.username?.trim().toLowerCase();
+  return Boolean(own) && author.username?.trim().toLowerCase() === own;
+}
+
 export function normalizeZernioEvent({ payload, account }: {
-  payload: unknown; account: { zernioAccountId: string | null; instagramId: string };
+  payload: unknown; account: { zernioAccountId: string | null; instagramId: string; username?: string | null };
 }): InstagramPayload | null {
   const parsed = envelopeSchema.safeParse(payload);
   if (!parsed.success || parsed.data.account.id !== account.zernioAccountId) return null;
   const { event, comment, message, metadata, conversation, statusAt } = parsed.data;
   const entry: InstagramPayload['entry'][number] = { id: account.instagramId, time: Date.now() };
   if (event === 'comment.received' && comment) {
+    if (isOwnComment(comment.author, account)) return null;
     entry.changes = [{ field: 'comments', value: { id: comment.id, text: comment.text, from: comment.author, media: { id: comment.platformPostId } } }];
   } else if (event === 'message.received' && message?.direction === 'incoming') {
     const sender = { id: message.sender.id };

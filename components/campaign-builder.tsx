@@ -33,6 +33,8 @@ interface LoadedCampaign {
   name: string;
   postId: string | null;
   postUrl: string | null;
+  postIds?: string[];
+  postUrls?: string[];
   pendingNextReel: boolean;
   matchAnyPost: boolean;
   keywords: string[];
@@ -44,6 +46,7 @@ interface LoadedCampaign {
   openingDmMessage: string | null;
   openingDmButtonLabel: string | null;
   linkButtonLabel: string | null;
+  dmImageUrl?: string | null;
   requireFollow: boolean;
   followPromptMessage: string | null;
   followPromptButtonLabel: string | null;
@@ -150,6 +153,8 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const [triggerScope, setTriggerScope] = useState<TriggerScope>("specific");
   const [postId, setPostId] = useState<string | null>(null);
   const [postUrl, setPostUrl] = useState<string | null>(null);
+  const [postIds, setPostIds] = useState<string[]>([]);
+  const [postUrls, setPostUrls] = useState<string[]>([]);
   const [postThumb, setPostThumb] = useState<string | null>(null);
   const [postCaption, setPostCaption] = useState("");
 
@@ -175,6 +180,8 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const [trackedDestinationUrl, setTrackedDestinationUrl] = useState("");
   const [linkButtonLabel, setLinkButtonLabel] = useState("Open link");
   const [secondLinkOpen, setSecondLinkOpen] = useState(false);
+  const [dmImageUrl, setDmImageUrl] = useState("");
+  const [imageUploading, setImageUploading] = useState(false);
   const [secondaryDestinationUrl, setSecondaryDestinationUrl] = useState("");
   const [secondaryButtonLabel, setSecondaryButtonLabel] = useState("Open link");
   const [requireFollow, setRequireFollow] = useState(false);
@@ -195,7 +202,8 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const keywords = useMemo(
     () =>
       keywordText
-        .split(",")
+        // Latin comma, and the Arabic/Persian comma a Persian keyboard types.
+        .split(/[,،]/)
         .map((k) => k.trim())
         .filter(Boolean),
     [keywordText]
@@ -258,8 +266,16 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         setTriggerScope(
           c.matchAnyPost ? "any" : c.pendingNextReel ? "next" : "specific"
         );
-        setPostId(c.postId);
-        setPostUrl(c.postUrl);
+        const initialPostIds = c.postIds && c.postIds.length > 0
+          ? c.postIds
+          : (c.postId ? [c.postId] : []);
+        const initialPostUrls = c.postUrls && c.postUrls.length > 0
+          ? c.postUrls
+          : (c.postUrl ? [c.postUrl] : []);
+        setPostIds(initialPostIds);
+        setPostUrls(initialPostUrls);
+        setPostId(initialPostIds[0] ?? null);
+        setPostUrl(initialPostUrls[0] ?? null);
         setMatchMode(c.matchAnyWord ? "any" : "specific");
         setKeywordText(c.keywords.join(", "));
         setWholeWordMatch(c.wholeWordMatch ?? true);
@@ -277,6 +293,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         setOpeningDmButtonLabel(c.openingDmButtonLabel ?? "");
         setDmMessage(c.dmMessage);
         setLinkButtonLabel(c.linkButtonLabel ?? "Open link");
+        setDmImageUrl(c.dmImageUrl ?? "");
         setIsActive(c.isActive);
         const link = c.trackedLinks?.[0]?.destinationUrl ?? "";
         setTrackedDestinationUrl(link);
@@ -310,10 +327,14 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         if (cancelled || !payload.success) return;
         const map: Record<string, string> = {};
         for (const a of payload.data as LoadedCampaign[]) {
-          if (!a.postId) continue;
           if (a.instagramAccountId !== selectedAccountId) continue;
           if (mode === "edit" && a.id === campaignId) continue;
-          map[a.postId] = a.name;
+          if (a.postId) map[a.postId] = a.name;
+          if (a.postIds && Array.isArray(a.postIds)) {
+            for (const pid of a.postIds) {
+              map[pid] = a.name;
+            }
+          }
         }
         setUsedPosts(map);
       })
@@ -330,6 +351,8 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
     setTriggerScope("specific");
     setPostId(null);
     setPostUrl(null);
+    setPostIds([]);
+    setPostUrls([]);
     setPostThumb(null);
     setPostCaption("");
     setMatchMode("specific");
@@ -382,6 +405,30 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
     setPostUrl(url ?? null);
     setPostThumb(thumb ?? null);
     setPostCaption(caption ?? "");
+    setPostIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    if (url) {
+      setPostUrls((prev) => (prev.includes(url) ? prev : [...prev, url]));
+    }
+  }
+
+  async function uploadDmImage(file: File) {
+    setError(null);
+    setImageUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/automations/image", {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json();
+      if (!data.success) setError(data.error || t("Image upload failed."));
+      else setDmImageUrl(data.data.url);
+    } catch {
+      setError(t("Image upload failed."));
+    } finally {
+      setImageUploading(false);
+    }
   }
 
   function ensureLinkToken() {
@@ -392,7 +439,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
     setError(null);
 
     if (!selectedAccountId) return setError(t("Connect an Instagram account first."));
-    if (triggerScope === "specific" && !postId)
+    if (triggerScope === "specific" && postIds.length === 0 && !postId)
       return setError(t("Pick a post or reel to trigger the campaign."));
     if (matchMode === "specific" && keywords.length === 0)
       return setError(t("Add at least one keyword, or switch to any word."));
@@ -402,11 +449,20 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
 
     setSaving(true);
 
+    const effectivePostIds = triggerScope === "specific"
+      ? (postIds.length > 0 ? postIds : (postId ? [postId] : []))
+      : [];
+    const effectivePostUrls = triggerScope === "specific"
+      ? (postUrls.length > 0 ? postUrls : (postUrl ? [postUrl] : []))
+      : [];
+
     const payload = {
       name: name.trim() || `Campaign for @${username}`,
       instagramAccountId: selectedAccountId,
-      postId: triggerScope === "specific" ? postId : null,
-      postUrl: triggerScope === "specific" ? postUrl : null,
+      postId: triggerScope === "specific" ? (effectivePostIds[0] ?? postId) : null,
+      postUrl: triggerScope === "specific" ? (effectivePostUrls[0] ?? postUrl) : null,
+      postIds: effectivePostIds,
+      postUrls: effectivePostUrls,
       matchAnyPost: triggerScope === "any",
       pendingNextReel: triggerScope === "next",
       matchAnyWord: matchMode === "any",
@@ -423,6 +479,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         : [],
       trackedDestinationUrl: trackedDestinationUrl.trim() || "",
       linkButtonLabel: linkButtonLabel.trim() || "Open link",
+      dmImageUrl,
       secondaryDestinationUrl: secondaryDestinationUrl.trim() || "",
       secondaryButtonLabel: secondaryButtonLabel.trim() || "Open link",
       requireFollow,
@@ -451,13 +508,18 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             });
       const data = await res.json();
       if (data.success) {
-        // The post we just assigned is now in use. Reflect it immediately so
-        // the picker flags it on the next imported row — the fetch that builds
+        // The post(s) we just assigned are now in use. Reflect them immediately so
+        // the picker flags them on the next imported row — the fetch that builds
         // this map doesn't re-run while the builder stays mounted through the
         // import queue.
-        if (triggerScope === "specific" && postId) {
-          const assignedPostId = postId;
-          setUsedPosts((prev) => ({ ...prev, [assignedPostId]: payload.name }));
+        if (triggerScope === "specific" && effectivePostIds.length > 0) {
+          setUsedPosts((prev) => {
+            const updated = { ...prev };
+            for (const pid of effectivePostIds) {
+              updated[pid] = payload.name;
+            }
+            return updated;
+          });
         }
         // Importing: advance to the next queued row instead of leaving.
         if (importQueue && importQueue.length > 1) {
@@ -663,6 +725,8 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
                   setSelectedAccountId(id);
                   setPostId(null);
                   setPostUrl(null);
+                  setPostIds([]);
+                  setPostUrls([]);
                   setPostThumb(null);
                 }}
                 includeAll={false}
@@ -683,9 +747,25 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             <div className="rounded-lg border border-border p-2">
               <PostPicker
                 selectedPostId={postId}
+                selectedPostIds={postIds}
                 instagramAccountId={selectedAccountId}
                 usedPostIds={usedPosts}
                 onSelect={handlePostSelect}
+                onSelectionChange={(selected) => {
+                  const ids = selected.map((s) => s.id);
+                  const urls = selected.map((s) => s.url).filter(Boolean) as string[];
+                  setPostIds(ids);
+                  setPostUrls(urls);
+                  setPostId(ids[0] ?? null);
+                  setPostUrl(urls[0] ?? null);
+                  if (selected.length > 0) {
+                    setPostThumb(selected[0].thumb ?? null);
+                    setPostCaption(selected[0].caption ?? "");
+                  } else {
+                    setPostThumb(null);
+                    setPostCaption("");
+                  }
+                }}
               />
             </div>
           )}
@@ -943,6 +1023,43 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             <p className="text-xs text-muted">
               {"{link}"} {t("inserts the tracked link;")} {"{username}"} {t("personalizes.")}
             </p>
+            <div className="space-y-2 border-t border-border pt-2">
+              {dmImageUrl ? (
+                <div className="flex items-center gap-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={dmImageUrl}
+                    alt=""
+                    className="h-16 w-16 rounded-lg border border-border object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setDmImageUrl("")}
+                    className="rounded-lg border border-border px-3 py-2 text-sm text-muted hover:text-foreground"
+                  >
+                    {t("Remove image")}
+                  </button>
+                </div>
+              ) : (
+                <label className="block w-full cursor-pointer rounded-lg border border-border py-2 text-center text-sm text-muted hover:text-foreground">
+                  {imageUploading ? t("Uploading…") : t("+ Attach An Image")}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png"
+                    className="hidden"
+                    disabled={imageUploading}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = "";
+                      if (file) void uploadDmImage(file);
+                    }}
+                  />
+                </label>
+              )}
+              <p className="text-xs text-muted">
+                {t("Sent as a photo right after this message, when it goes out as a DM (keyword DM or button tap). Instagram does not allow images in the first reply to a comment. JPG or PNG, up to 8 MB.")}
+              </p>
+            </div>
           </div>
           <div className="mt-3 rounded-lg border border-border p-3">
             <div className="flex items-center justify-between">

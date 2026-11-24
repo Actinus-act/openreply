@@ -197,6 +197,8 @@ model Automation {
   goal           String?
   postId         String?
   postUrl        String?
+  postIds        String[] @default([])
+  postUrls       String[] @default([])
   pendingNextReel Boolean @default(false)
   matchAnyPost   Boolean @default(false)
   keywords       String[]
@@ -210,6 +212,9 @@ model Automation {
   openingDmMessage     String?
   openingDmButtonLabel String?
   linkButtonLabel      String?
+  // Image sent as a separate attachment right after the link DM. Only on the
+  // DM paths (keyword DM, button tap): a private reply to a comment is text-only.
+  dmImageUrl           String?
   requireFollow           Boolean @default(false)
   followPromptMessage     String?
   followPromptButtonLabel String?
@@ -238,6 +243,18 @@ model Automation {
   @@index([workspaceId])
   @@index([instagramAccountId])
   @@index([postId])
+}
+
+// Images uploaded for campaign DMs, served publicly at /api/media/<id> so
+// Instagram (or Zernio) can fetch them when sending the attachment.
+model DmImage {
+  id          String   @id @default(cuid())
+  workspaceId String
+  mimeType    String
+  data        Bytes
+  createdAt   DateTime @default(now())
+
+  @@index([workspaceId])
 }
 
 model DmLog {

@@ -25,24 +25,35 @@ interface InstagramPost {
   timestamp: string;
 }
 
+interface SelectedPostItem {
+  id: string;
+  url?: string;
+  thumb?: string;
+  caption?: string;
+}
+
 interface PostPickerProps {
-  selectedPostId: string | null;
+  selectedPostId?: string | null;
+  selectedPostIds?: string[];
   instagramAccountId?: string | null;
   /** postId -> name of the campaign already using it. Flagged in the grid. */
   usedPostIds?: Record<string, string>;
-  onSelect: (
+  onSelect?: (
     postId: string,
     postUrl?: string,
     thumbUrl?: string,
     caption?: string
   ) => void;
+  onSelectionChange?: (selected: SelectedPostItem[]) => void;
 }
 
 export default function PostPicker({
   selectedPostId,
+  selectedPostIds,
   instagramAccountId,
   usedPostIds,
   onSelect,
+  onSelectionChange,
 }: PostPickerProps) {
   const { t } = useI18n();
   const [limitations, setLimitations] = useState<string[]>([]);
@@ -138,6 +149,33 @@ export default function PostPicker({
   const visible = matching.slice(0, shown);
   const remaining = matching.length - visible.length;
 
+  const currentSelectedIds = selectedPostIds ?? (selectedPostId ? [selectedPostId] : []);
+  const selectedCount = currentSelectedIds.length;
+
+  function handleTileClick(post: InstagramPost) {
+    const thumb = post.thumbnail_url ?? post.media_url;
+    if (onSelectionChange) {
+      const exists = currentSelectedIds.includes(post.id);
+      const nextIds = exists
+        ? currentSelectedIds.filter((id) => id !== post.id)
+        : [...currentSelectedIds, post.id];
+
+      const nextItems: SelectedPostItem[] = nextIds.map((id) => {
+        const p = posts.find((item) => item.id === id);
+        return {
+          id,
+          url: p?.permalink,
+          thumb: p?.thumbnail_url ?? p?.media_url,
+          caption: p?.caption,
+        };
+      });
+      onSelectionChange(nextItems);
+    }
+    if (onSelect) {
+      onSelect(post.id, post.permalink, thumb, post.caption);
+    }
+  }
+
   return (
     <div className="space-y-2">
       {limitations.map(note => <p key={note} className="text-xs text-muted">{note}</p>)}
@@ -162,18 +200,36 @@ export default function PostPicker({
         </p>
       ) : (
         <>
-          {usedPostIds && Object.keys(usedPostIds).length > 0 && (
-            <p className="flex items-center gap-1.5 px-1 text-[11px] text-muted">
-              <span className="inline-block h-2.5 w-2.5 rounded-sm border border-warning/50" />
-              {t("Already used")}
-            </p>
-          )}
+          <div className="flex items-center justify-between px-1">
+            {usedPostIds && Object.keys(usedPostIds).length > 0 && (
+              <p className="flex items-center gap-1.5 text-[11px] text-muted">
+                <span className="inline-block h-2.5 w-2.5 rounded-sm border border-warning/50" />
+                {t("Already used")}
+              </p>
+            )}
+            {selectedCount > 0 && (
+              <div className="flex items-center gap-2 text-xs ms-auto">
+                <span className="font-medium text-accent">
+                  {selectedCount} {t("Selected")}
+                </span>
+                {selectedCount > 1 && onSelectionChange && (
+                  <button
+                    type="button"
+                    onClick={() => onSelectionChange([])}
+                    className="text-muted hover:text-foreground underline text-[11px]"
+                  >
+                    {t("Clear")}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           {/* auto-rows-min + content-start keep each row at its natural height.
               Without them the rows share out max-h-64 instead of scrolling, and
               the square thumbnails flatten into strips. */}
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-64 auto-rows-min content-start overflow-y-auto p-1">
             {visible.map((post) => {
-              const isSelected = selectedPostId === post.id;
+              const isSelected = currentSelectedIds.includes(post.id);
               const usedByName = usedPostIds?.[post.id];
               const isUsed = Boolean(usedByName) && !isSelected;
               const thumb = post.thumbnail_url ?? post.media_url;
@@ -184,7 +240,7 @@ export default function PostPicker({
           <button
             key={post.id}
             type="button"
-            onClick={() => onSelect(post.id, post.permalink, thumb, post.caption)}
+            onClick={() => handleTileClick(post)}
             onMouseEnter={() => setHoveredId(post.id)}
             onMouseLeave={() =>
               setHoveredId((cur) => (cur === post.id ? null : cur))
@@ -195,7 +251,7 @@ export default function PostPicker({
               relative aspect-square rounded overflow-hidden border-2
               ${
                 isSelected
-                  ? "border-accent"
+                  ? "border-accent ring-2 ring-accent/30"
                   : isUsed
                     ? "border-warning/40 hover:border-warning/60"
                     : "border-border hover:border-border-hover"
@@ -230,9 +286,16 @@ export default function PostPicker({
               />
             )}
             {isSelected && (
-              <span className="absolute bottom-0 inset-x-0 bg-accent text-white text-xs py-1">
-                {t("Selected")}
-              </span>
+              <>
+                <div className="absolute top-1.5 right-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-white shadow-sm ring-1 ring-white/50">
+                  <svg className="w-3.5 h-3.5 fill-none stroke-current stroke-2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <span className="absolute bottom-0 inset-x-0 bg-accent text-white text-xs py-1">
+                  {t("Selected")}
+                </span>
+              </>
             )}
           </button>
               );

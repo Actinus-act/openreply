@@ -9,6 +9,7 @@ import {
   createInstagramContext,
   sendPrivateReplyWithButton,
   sendDirectMessageWithLinkButton,
+  sendDirectImage,
   getRecentMediaComments,
   getUserFollowStatus,
   getUserInfo,
@@ -112,6 +113,23 @@ describe("Instagram provider boundary", () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).buttons[0].type).toBe(
       "url"
     );
+  });
+  it("sends a campaign image as an attachment, not as message text", async () => {
+    respond({ messageId: "mid" });
+    await sendDirectImage({
+      context,
+      instagramAccountId: "ig",
+      userId: "recipient",
+      imageUrl: "https://reply.example.com/api/media/abc.jpg",
+    });
+    expect(fetchMock.mock.calls[0][0]).toContain(
+      "/conversations/recipient/messages"
+    );
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      accountId: "selected",
+      attachmentUrl: "https://reply.example.com/api/media/abc.jpg",
+      attachmentType: "image",
+    });
   });
   it("follows comment cursors and preserves owner replies", async () => {
     respond({
